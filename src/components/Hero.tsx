@@ -2,7 +2,6 @@ import { motion } from "motion/react";
 import { Sparkles } from "lucide-react";
 import { HeroDecorations } from "./HeroDecorations";
 import { BackgroundRemover } from "./BackgroundRemover";
-import { DotField } from "./DotField";
 
 export function Hero() {
   return (
@@ -10,17 +9,6 @@ export function Hero() {
       <HeroDecorations />
 
       <div className="relative mx-auto max-w-5xl px-3 sm:px-4 text-center">
-        <DotField
-          dotRadius={1.5}
-          dotSpacing={14}
-          cursorRadius={500}
-          cursorForce={0.1}
-          bulgeOnly={true}
-          bulgeStrength={67}
-          glowRadius={160}
-          sparkle={false}
-          waveAmplitude={0}
-        />
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
