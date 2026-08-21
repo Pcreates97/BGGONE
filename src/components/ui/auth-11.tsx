@@ -14,6 +14,7 @@ import {
   Sparkle,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../../lib/supabase";
 import { site } from "../../config/site";
 import authHeroImg from "../../assets/images/auth_hero_showcase_1787253497556.jpg";
 import stepDropImg from "../../assets/images/card_step_drop_image_1787251301896.jpg";
@@ -159,11 +160,20 @@ export default function Auth11({ initialMode = "signup" }: Auth11Props) {
           setIsSubmitting(false);
           return;
         }
+
+        if (res.confirmationRequired) {
+          setSuccess(
+            "Account created! Please check your email inbox to confirm your email before logging in.",
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
         setSuccess("Account created successfully! Redirecting...");
       } else {
         const res = await login(email, password);
         if (!res.success) {
-          setError(res.error || "Invalid login credentials.");
+          setError(res.error || "Invalid login credentials. Please check your email and password.");
           setIsSubmitting(false);
           return;
         }
@@ -171,11 +181,34 @@ export default function Auth11({ initialMode = "signup" }: Auth11Props) {
       }
 
       setTimeout(() => {
-        router.navigate({ to: "/" });
+        router.navigate({ to: "/account" });
       }, 700);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
       setError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError("Please enter your email address above to receive a password reset link.");
+      return;
+    }
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/account`,
+      });
+      if (resetErr) {
+        setError(resetErr.message);
+      } else {
+        setSuccess("Password reset instructions have been sent to your email.");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to request password reset.");
     } finally {
       setIsSubmitting(false);
     }
@@ -186,10 +219,7 @@ export default function Auth11({ initialMode = "signup" }: Auth11Props) {
     setIsSubmitting(true);
     const res = await loginWithSocial(provider);
     if (res.success) {
-      setSuccess(`Signed in with ${provider === "google" ? "Google" : "Apple"}! Redirecting...`);
-      setTimeout(() => {
-        router.navigate({ to: "/" });
-      }, 700);
+      setSuccess(`Connecting to ${provider === "google" ? "Google" : "Apple"}...`);
     } else {
       setError(res.error || "Social authentication failed.");
       setIsSubmitting(false);
@@ -477,7 +507,7 @@ export default function Auth11({ initialMode = "signup" }: Auth11Props) {
                   {mode === "login" && (
                     <button
                       type="button"
-                      onClick={() => alert("Demo recovery link has been sent to your email.")}
+                      onClick={handleForgotPassword}
                       className="text-[11px] font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     >
                       Forgot password?

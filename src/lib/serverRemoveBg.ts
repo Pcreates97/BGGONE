@@ -1,12 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
 export function getRemoveBgApiKey(): string | undefined {
-  return process.env.REMOVE_BG_API_KEY;
+  return typeof process !== "undefined" ? process.env?.REMOVE_BG_API_KEY : undefined;
 }
 
 export async function callRemoveBgCloudApi(
   imageBytes: Uint8Array | ArrayBuffer,
-  size = "auto",
+  size = "full",
 ): Promise<Uint8Array> {
   const apiKey = getRemoveBgApiKey();
   if (!apiKey) {
@@ -19,6 +19,8 @@ export async function callRemoveBgCloudApi(
   formData.append("image_file", blob, "image.png");
   formData.append("size", size);
   formData.append("format", "png");
+  formData.append("type", "auto");
+  formData.append("channels", "rgba");
 
   const response = await fetch("https://api.remove.bg/v1.0/removebg", {
     method: "POST",
@@ -50,7 +52,19 @@ export async function callRemoveBgCloudApi(
 }
 
 export const removeBackgroundServerFn = createServerFn({ method: "POST" })
-  .validator((data: { imageBase64: string; size?: string }) => data)
+  .validator((data: { imageBase64: string; size?: string }) => {
+    if (!data || typeof data.imageBase64 !== "string") {
+      throw new Error("Invalid payload: imageBase64 is required");
+    }
+    const safeSize =
+      data.size && ["auto", "preview", "full", "regular", "medium", "hd", "4k"].includes(data.size)
+        ? data.size
+        : "auto";
+    return {
+      imageBase64: data.imageBase64,
+      size: safeSize,
+    };
+  })
   .handler(async ({ data }) => {
     const base64Data = data.imageBase64.includes(",")
       ? data.imageBase64.split(",")[1]

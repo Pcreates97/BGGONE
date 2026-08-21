@@ -5,6 +5,7 @@ import {
 } from "@imgly/background-removal";
 import { IMAGE_CONFIG } from "../config/imageConfig";
 import { removeBackgroundServerFn } from "./serverRemoveBg";
+import { recombineWithOriginalResolution } from "./imageEnhancer";
 
 export interface RemoveBackgroundOptions {
   onProgress?: (fraction: number, message: string) => void;
@@ -37,47 +38,53 @@ async function removeBackgroundViaCloudApi(
 ): Promise<Blob> {
   opts?.onProgress?.(0.2, "Sending image to high-speed AI engine...");
 
-  // 1. Try server function RPC
+  let cutoutBlob: Blob | null = null;
+
+  // 1. Try server function RPC with full resolution
   try {
     const base64 = await fileToBase64(file);
     opts?.onProgress?.(0.5, "Processing background removal...");
 
     const res = await removeBackgroundServerFn({
-      data: { imageBase64: base64, size: "auto" },
+      data: { imageBase64: base64, size: "full" },
     });
 
     if (res && res.dataUrl) {
-      opts?.onProgress?.(0.9, "Finalizing transparent image...");
+      opts?.onProgress?.(0.8, "Restoring full native resolution...");
       const fetchRes = await fetch(res.dataUrl);
-      const blob = await fetchRes.blob();
-      return blob;
+      cutoutBlob = await fetchRes.blob();
     }
   } catch (rpcErr) {
     console.warn("ServerFn returned error, attempting direct REST endpoint:", rpcErr);
   }
 
   // 2. Fallback to direct REST endpoint
-  const formData = new FormData();
-  formData.append("image_file", file, file.name || "image.png");
-  formData.append("size", "auto");
+  if (!cutoutBlob) {
+    const formData = new FormData();
+    formData.append("image_file", file, file.name || "image.png");
+    formData.append("size", "full");
 
-  opts?.onProgress?.(0.6, "Processing transparent cutout...");
+    opts?.onProgress?.(0.6, "Processing transparent cutout...");
 
-  const response = await fetch("/api/removebg", {
-    method: "POST",
-    body: formData,
-  });
+    const response = await fetch("/api/removebg", {
+      method: "POST",
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => null);
-    const errorMsg =
-      errorJson?.error || `Background removal API returned status ${response.status}`;
-    throw new Error(errorMsg);
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => null);
+      const errorMsg =
+        errorJson?.error || `Background removal API returned status ${response.status}`;
+      throw new Error(errorMsg);
+    }
+
+    cutoutBlob = await response.blob();
   }
 
-  opts?.onProgress?.(0.95, "Finalizing transparent image...");
-  const blob = await response.blob();
-  return blob;
+  opts?.onProgress?.(0.95, "Preserving 100% full original resolution & quality...");
+  const fullResBlob = await recombineWithOriginalResolution(file, cutoutBlob);
+
+  return fullResBlob;
 }
 
 /**
@@ -314,23 +321,28 @@ export async function removeBackground(
     const { source } = await preprocessImageForInference(file);
     const config = await getEngineConfig(opts);
 
+    let rawResult: Blob;
+
     try {
-      const result = await imglyRemoveBackground(source, config);
+      rawResult = await imglyRemoveBackground(source, config);
       engineStatus = "ready";
-      opts.onProgress?.(1.0, "Complete!");
-      return result;
     } catch (primaryError) {
       if (activeDevice === "gpu") {
         console.warn("WebGPU fallback failed. Falling back to CPU/WASM:", primaryError);
         activeDevice = "cpu";
         const cpuConfig = await getEngineConfig(opts, true);
-        const fallbackResult = await imglyRemoveBackground(source, cpuConfig);
+        rawResult = await imglyRemoveBackground(source, cpuConfig);
         engineStatus = "ready";
-        opts.onProgress?.(1.0, "Complete!");
-        return fallbackResult;
+      } else {
+        throw primaryError;
       }
-      throw primaryError;
     }
+
+    opts.onProgress?.(0.95, "Restoring full native resolution & details...");
+    const fullResBlob = await recombineWithOriginalResolution(file, rawResult);
+
+    opts.onProgress?.(1.0, "Complete!");
+    return fullResBlob;
   }
 }
 

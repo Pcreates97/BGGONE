@@ -1,31 +1,74 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 import type { User, AuthContextType } from "../types/auth";
-
-interface StoredUser extends User {
-  password?: string;
-}
+import { supabase } from "../lib/supabase";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_USERS_KEY = "bg_gone_auth_users";
-const STORAGE_SESSION_KEY = "bg_gone_auth_session";
+function mapSupabaseUser(sbUser: SupabaseUser): User {
+  const meta = sbUser.user_metadata || {};
+  return {
+    id: sbUser.id,
+    name: meta.name || meta.full_name || sbUser.email?.split("@")[0] || "Community Creator",
+    email: sbUser.email || "",
+    avatar: meta.avatar_url || meta.picture || undefined,
+    createdAt: sbUser.created_at || new Date().toISOString(),
+    plan: (meta.plan as "Free Community" | "Pro Creator") || "Free Community",
+    imagesProcessed: meta.images_processed || 0,
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Initialize session from localStorage on mount
+  // Initialize session and subscribe to Supabase Auth state changes
   useEffect(() => {
-    try {
-      const savedSession = localStorage.getItem(STORAGE_SESSION_KEY);
-      if (savedSession) {
-        setUser(JSON.parse(savedSession));
+    let isMounted = true;
+
+    async function initSession() {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+        if (error) {
+          console.warn("Supabase getSession warning:", error.message);
+        }
+        if (isMounted) {
+          if (session?.user) {
+            setUser(mapSupabaseUser(session.user));
+          } else {
+            setUser(null);
+          }
+        }
+      } catch (err) {
+        console.error("Error initializing auth session:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
-    } catch {
-      // ignore parsing errors
-    } finally {
-      setIsLoading(false);
     }
+
+    initSession();
+
+    // Listen to real-time auth state changes (login, logout, token refresh, OAuth return)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(mapSupabaseUser(session.user));
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (
@@ -37,46 +80,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const usersRaw = localStorage.getItem(STORAGE_USERS_KEY);
-      const users: StoredUser[] = usersRaw ? JSON.parse(usersRaw) : [];
-      const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-      if (!found) {
-        // Auto-provision demo account for frictionless experience
-        const newUser: User = {
-          id: `usr_${Date.now()}`,
-          name: email.split("@")[0] || "Community User",
-          email: email.trim().toLowerCase(),
-          createdAt: new Date().toISOString(),
-          plan: "Free Community",
-          imagesProcessed: 0,
-        };
-        const updatedUsers: StoredUser[] = [...users, { ...newUser, password }];
-        localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
-        localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(newUser));
-        setUser(newUser);
-        return { success: true };
+      if (error) {
+        return { success: false, error: error.message };
       }
 
-      if (found.password && found.password !== password) {
-        return { success: false, error: "Invalid password. Please try again." };
+      if (data.user) {
+        setUser(mapSupabaseUser(data.user));
       }
 
-      const activeUser: User = {
-        id: found.id,
-        name: found.name,
-        email: found.email,
-        avatar: found.avatar,
-        createdAt: found.createdAt,
-        plan: found.plan || "Free Community",
-        imagesProcessed: found.imagesProcessed || 0,
-      };
-
-      localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(activeUser));
-      setUser(activeUser);
       return { success: true };
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Login failed.";
+      const msg = e instanceof Error ? e.message : "Login failed. Please check your credentials.";
       return { success: false, error: msg };
     }
   };
@@ -85,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string,
     email: string,
     password: string,
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; confirmationRequired?: boolean }> => {
     if (!email || !password) {
       return { success: false, error: "Please fill in all required fields." };
     }
@@ -98,66 +117,105 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const usersRaw = localStorage.getItem(STORAGE_USERS_KEY);
-      const users: StoredUser[] = usersRaw ? JSON.parse(usersRaw) : [];
-      const existing = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanName = name.trim() || cleanEmail.split("@")[0] || "Community Creator";
 
-      if (existing) {
-        return {
-          success: false,
-          error: "An account with this email already exists. Try logging in.",
-        };
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: {
+            name: cleanName,
+            full_name: cleanName,
+            plan: "Free Community",
+            images_processed: 0,
+          },
+        },
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
       }
 
-      const newUser: User = {
-        id: `usr_${Date.now()}`,
-        name: name.trim() || email.split("@")[0] || "Community Creator",
-        email: email.trim().toLowerCase(),
-        createdAt: new Date().toISOString(),
-        plan: "Free Community",
-        imagesProcessed: 0,
-      };
+      if (data.user) {
+        const mapped = mapSupabaseUser(data.user);
+        setUser(mapped);
 
-      const updatedUsers: StoredUser[] = [...users, { ...newUser, password }];
-      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
-      localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(newUser));
-      setUser(newUser);
+        // If session is null, Supabase requires email confirmation
+        if (!data.session) {
+          return {
+            success: true,
+            confirmationRequired: true,
+          };
+        }
+      }
+
       return { success: true };
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Registration failed.";
+      const msg = e instanceof Error ? e.message : "Registration failed. Please try again.";
       return { success: false, error: msg };
     }
   };
 
   const loginWithSocial = async (
-    provider: "google" | "apple",
+    provider: "google" | "apple" | "github",
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const socialUser: User = {
-        id: `usr_social_${Date.now()}`,
-        name: provider === "google" ? "Google Community User" : "Apple Community User",
-        email: `user@${provider}.com`,
-        avatar:
-          provider === "google"
-            ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-            : undefined,
-        createdAt: new Date().toISOString(),
-        plan: "Free Community",
-        imagesProcessed: 0,
-      };
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${origin}/account`,
+        },
+      });
 
-      localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(socialUser));
-      setUser(socialUser);
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
       return { success: true };
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Social sign-in failed.";
+      const msg = e instanceof Error ? e.message : "Social authentication failed.";
       return { success: false, error: msg };
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem(STORAGE_SESSION_KEY);
-    setUser(null);
+  const logout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("Sign out error:", err);
+    } finally {
+      setUser(null);
+    }
+  }, []);
+
+  const updateProfile = async (updates: {
+    name?: string;
+    avatar?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        data: {
+          name: updates.name,
+          full_name: updates.name,
+          avatar_url: updates.avatar,
+        },
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        setUser(mapSupabaseUser(data.user));
+      }
+
+      return { success: true };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to update profile.";
+      return { success: false, error: msg };
+    }
   };
 
   return (
@@ -170,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signup,
         loginWithSocial,
         logout,
+        updateProfile,
       }}
     >
       {children}

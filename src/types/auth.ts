@@ -17,7 +17,13 @@ export interface AuthContextType {
     name: string,
     email: string,
     password: string,
+  ) => Promise<{ success: boolean; error?: string; confirmationRequired?: boolean }>;
+  loginWithSocial: (
+    provider: "google" | "apple" | "github",
   ) => Promise<{ success: boolean; error?: string }>;
-  loginWithSocial: (provider: "google" | "apple") => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  updateProfile?: (updates: {
+    name?: string;
+    avatar?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
 }

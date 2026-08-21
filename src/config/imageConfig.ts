@@ -4,17 +4,16 @@
  */
 export const IMAGE_CONFIG = {
   /**
-   * Maximum dimension (width or height) for image inference.
-   * Scaled down intelligently before inference to match the ISNet 1024x1024 receptive field,
-   * cutting pure-JS tensor resizing and canvas encoding time by over 75%
-   * while keeping crisp HD visual quality.
+   * Maximum dimension (width or height) for initial neural segmentation inference.
+   * Full-resolution re-compositing restores 100% of the original uncompressed source
+   * dimensions and pixel sharpness after inference.
    */
-  maxInferenceDimension: 1280,
+  maxInferenceDimension: 1600,
 
   /**
    * Hard limits to protect browser memory and prevent crashes on mobile or low-RAM devices.
    */
-  maxFileSizeBytes: 25 * 1024 * 1024, // 25 MB
+  maxFileSizeBytes: 35 * 1024 * 1024, // 35 MB
   maxDimensionPixels: 8192, // 8K maximum dimension
   maxTotalPixels: 64_000_000, // 64 Megapixels
 

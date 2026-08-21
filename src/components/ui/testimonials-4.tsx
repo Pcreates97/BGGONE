@@ -141,27 +141,35 @@ const CATEGORIES = [
 ] as const;
 
 export default function Testimonials4() {
+  const [mounted, setMounted] = React.useState(false);
   const [selectedCategory, setSelectedCategory] = React.useState<string>("all");
   const [api, setApi] = React.useState<CarouselApi>();
   const [canScrollUp, setCanScrollUp] = React.useState(false);
   const [canScrollDown, setCanScrollDown] = React.useState(true);
   const [isHovered, setIsHovered] = React.useState(false);
 
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const filteredTestimonials = React.useMemo(() => {
     if (selectedCategory === "all") return testimonials;
     return testimonials.filter((t) => t.category === selectedCategory);
   }, [selectedCategory]);
 
-  const plugin = React.useMemo(
-    () =>
-      Autoplay({
+  const plugin = React.useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    try {
+      return Autoplay({
         delay: 3200,
         stopOnInteraction: false,
         stopOnMouseEnter: true,
         playOnInit: true,
-      }),
-    [],
-  );
+      });
+    } catch {
+      return undefined;
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!api) return;
@@ -305,89 +313,115 @@ export default function Testimonials4() {
             <div className="pointer-events-none absolute top-0 right-0 left-0 z-20 h-16 bg-gradient-to-b from-background via-background/80 to-transparent" />
 
             {/* Carousel Container */}
-            <Carousel
-              setApi={setApi}
-              orientation="vertical"
-              opts={{
-                loop: true,
-                align: "start",
-              }}
-              plugins={[plugin]}
-              onMouseEnter={plugin.stop}
-              onMouseLeave={() => plugin.reset()}
-              className="h-full w-full [&_[data-slot=carousel-content]]:h-[480px] lg:[&_[data-slot=carousel-content]]:h-[540px]"
-            >
-              <CarouselContent className="-mt-4 py-4">
-                {filteredTestimonials.map((testimonial) => (
-                  <CarouselItem key={testimonial.id} className="basis-auto pt-4 select-none">
-                    <Card className="group relative overflow-hidden rounded-3xl border-2 border-foreground bg-card shadow-toy transition-all duration-300 hover:-translate-y-1 hover:shadow-toy-hover hover:border-primary">
-                      <CardContent className="flex flex-col gap-4 p-5 sm:p-6">
-                        {/* Header: Author Info + Highlight Tag + Quote Icon */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="relative">
-                              <Avatar className="h-12 w-12 rounded-2xl border-2 border-foreground shadow-toy-xs">
-                                <AvatarImage
-                                  src={testimonial.avatar}
-                                  alt={testimonial.name}
-                                  className="object-cover"
-                                />
-                                <AvatarFallback className="rounded-2xl bg-secondary font-display font-bold text-secondary-foreground">
-                                  {testimonial.name
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")}
-                                </AvatarFallback>
-                              </Avatar>
-                              {testimonial.metric && (
-                                <span className="absolute -bottom-1.5 -right-1.5 rounded-md border border-foreground bg-accent px-1.5 py-0.2 text-[9px] font-bold text-accent-foreground shadow-toy-xs">
-                                  {testimonial.metric}
-                                </span>
-                              )}
-                            </div>
+            {mounted ? (
+              <Carousel
+                setApi={setApi}
+                orientation="vertical"
+                opts={{
+                  loop: true,
+                  align: "start",
+                }}
+                plugins={plugin ? [plugin] : undefined}
+                onMouseEnter={() => plugin?.stop()}
+                onMouseLeave={() => plugin?.reset()}
+                className="h-full w-full [&_[data-slot=carousel-content]]:h-[480px] lg:[&_[data-slot=carousel-content]]:h-[540px]"
+              >
+                <CarouselContent className="-mt-4 py-4">
+                  {filteredTestimonials.map((testimonial) => (
+                    <CarouselItem key={testimonial.id} className="basis-auto pt-4 select-none">
+                      <Card className="group relative overflow-hidden rounded-3xl border-2 border-foreground bg-card shadow-toy transition-all duration-300 hover:-translate-y-1 hover:shadow-toy-hover hover:border-primary">
+                        <CardContent className="flex flex-col gap-4 p-5 sm:p-6">
+                          {/* Header: Author Info + Highlight Tag + Quote Icon */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <Avatar className="h-12 w-12 rounded-2xl border-2 border-foreground shadow-toy-xs">
+                                  <AvatarImage
+                                    src={testimonial.avatar}
+                                    alt={testimonial.name}
+                                    className="object-cover"
+                                  />
+                                  <AvatarFallback className="rounded-2xl bg-secondary font-display font-bold text-secondary-foreground">
+                                    {testimonial.name
+                                      .split(" ")
+                                      .map((n) => n[0])
+                                      .join("")}
+                                  </AvatarFallback>
+                                </Avatar>
+                                {testimonial.metric && (
+                                  <span className="absolute -bottom-1.5 -right-1.5 rounded-md border border-foreground bg-accent px-1.5 py-0.2 text-[9px] font-bold text-accent-foreground shadow-toy-xs">
+                                    {testimonial.metric}
+                                  </span>
+                                )}
+                              </div>
 
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <span className="font-display text-sm sm:text-base font-bold text-foreground">
-                                  {testimonial.name}
-                                </span>
-                                <span className="rounded-md border border-foreground bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                  {testimonial.tag}
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-display text-sm sm:text-base font-bold text-foreground">
+                                    {testimonial.name}
+                                  </span>
+                                  <span className="rounded-md border border-foreground bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                    {testimonial.tag}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  {testimonial.role} • {testimonial.company}
                                 </span>
                               </div>
-                              <span className="text-xs font-medium text-muted-foreground">
-                                {testimonial.role} • {testimonial.company}
-                              </span>
+                            </div>
+
+                            <div className="grid h-10 w-10 place-items-center rounded-2xl border-2 border-foreground bg-secondary text-secondary-foreground shadow-toy-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                              <Quote className="h-4 w-4 fill-current" />
                             </div>
                           </div>
 
-                          <div className="grid h-10 w-10 place-items-center rounded-2xl border-2 border-foreground bg-secondary text-secondary-foreground shadow-toy-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                            <Quote className="h-4 w-4 fill-current" />
+                          {/* Star Rating & Highlight Bar */}
+                          <div className="flex items-center justify-between border-y border-border py-2">
+                            <div className="flex items-center gap-1">
+                              {[...Array(testimonial.rating)].map((_, i) => (
+                                <Star key={i} className="h-3.5 w-3.5 fill-accent text-accent" />
+                              ))}
+                            </div>
+                            <span className="font-display text-xs font-bold text-foreground">
+                              "{testimonial.highlight}"
+                            </span>
                           </div>
-                        </div>
 
-                        {/* Star Rating & Highlight Bar */}
-                        <div className="flex items-center justify-between border-y border-border py-2">
-                          <div className="flex items-center gap-1">
-                            {[...Array(testimonial.rating)].map((_, i) => (
-                              <Star key={i} className="h-3.5 w-3.5 fill-accent text-accent" />
-                            ))}
-                          </div>
-                          <span className="font-display text-xs font-bold text-foreground">
-                            "{testimonial.highlight}"
-                          </span>
-                        </div>
-
-                        {/* Testimonial Quote Content */}
-                        <p className="text-xs sm:text-sm font-medium text-foreground/90 leading-relaxed">
-                          "{testimonial.content}"
+                          {/* Testimonial Quote Content */}
+                          <p className="text-xs sm:text-sm font-medium text-foreground/90 leading-relaxed">
+                            "{testimonial.content}"
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+              </Carousel>
+            ) : (
+              <div className="flex flex-col gap-4 py-4 h-full overflow-hidden">
+                {filteredTestimonials.slice(0, 2).map((testimonial) => (
+                  <Card
+                    key={testimonial.id}
+                    className="relative overflow-hidden rounded-3xl border-2 border-foreground bg-card shadow-toy p-5"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-12 w-12 rounded-2xl border-2 border-foreground bg-secondary font-display font-bold text-secondary-foreground grid place-items-center">
+                        {testimonial.name.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="font-display text-base font-bold text-foreground">
+                          {testimonial.name}
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          {testimonial.role} • {testimonial.company}
                         </p>
-                      </CardContent>
-                    </Card>
-                  </CarouselItem>
+                      </div>
+                    </div>
+                    <p className="text-sm text-foreground/90">"{testimonial.content}"</p>
+                  </Card>
                 ))}
-              </CarouselContent>
-            </Carousel>
+              </div>
+            )}
 
             {/* Bottom Fade Gradient */}
             <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 h-16 bg-gradient-to-t from-background via-background/80 to-transparent" />

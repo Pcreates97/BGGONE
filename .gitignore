@@ -21,6 +21,15 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Environment Variables & Secrets (CRITICAL: Never commit secrets)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
