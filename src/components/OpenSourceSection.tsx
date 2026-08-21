@@ -1,28 +1,47 @@
 import { motion } from "motion/react";
 import { Code2, ShieldCheck, UserX } from "lucide-react";
+import { MinimalCarousel, type CarouselCard } from "./ui/minimal-carousel";
 
-const blocks = [
+const CAROUSEL_CARDS: CarouselCard[] = [
   {
-    icon: Code2,
+    id: "open-source",
     title: "OPEN SOURCE",
-    desc: "Inspect the code, improve it, break it, fix it, and make it better.",
-    color: "bg-secondary",
+    value: "Inspect the code, improve it, break it, fix it, and make it better.",
+    description:
+      "Built completely transparently on modern web standards with zero black-box magic.",
+    tag: "100% Free",
+    color: "bg-secondary text-secondary-foreground",
+    icon: Code2,
+    actionText: "Inspect Source",
   },
   {
-    icon: ShieldCheck,
+    id: "privacy-focused",
     title: "PRIVACY FOCUSED",
-    desc: "Designed without unnecessary image storage or tracking.",
+    value: "Designed without unnecessary image storage or tracking.",
+    description:
+      "Images are processed securely on-demand and never stored on remote disks or used for training.",
+    tag: "Zero Storage",
     color: "bg-primary text-primary-foreground",
+    icon: ShieldCheck,
+    actionText: "Security Details",
   },
   {
-    icon: UserX,
+    id: "no-account",
     title: "NO ACCOUNT",
-    desc: "No email. No password. No 'verify your inbox.' Just use the tool.",
-    color: "bg-accent",
+    value: "No email. No password. No 'verify your inbox.' Just use the tool.",
+    description: "Instant access right in your browser. Upload, cut out, and download in seconds.",
+    tag: "Instant Access",
+    color: "bg-accent text-accent-foreground",
+    icon: UserX,
+    actionText: "Start Removing",
   },
 ];
 
 export function OpenSourceSection() {
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <section id="open" className="mx-auto max-w-6xl px-4 py-16 sm:py-24">
       <div className="grid gap-8 md:grid-cols-2 md:items-end">
@@ -44,28 +63,15 @@ export function OpenSourceSection() {
         </p>
       </div>
 
-      <div className="mt-14 grid gap-6 md:grid-cols-3">
-        {blocks.map((b, i) => {
-          const Icon = b.icon;
-          return (
-            <motion.div
-              key={b.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-              className="rounded-3xl border-2 border-foreground bg-background p-6 shadow-toy"
-            >
-              <div
-                className={`grid h-14 w-14 place-items-center rounded-2xl border-2 border-foreground shadow-toy-sm ${b.color}`}
-              >
-                <Icon className="h-6 w-6" strokeWidth={2.5} />
-              </div>
-              <h3 className="mt-5 font-display text-xl font-bold">{b.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{b.desc}</p>
-            </motion.div>
-          );
-        })}
+      <div className="mt-14">
+        <MinimalCarousel
+          cards={CAROUSEL_CARDS}
+          onActionClick={(card) => {
+            if (card.id === "no-account") {
+              scrollToTop();
+            }
+          }}
+        />
       </div>
     </section>
   );

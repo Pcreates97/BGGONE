@@ -5,6 +5,7 @@ import { HowItWorks } from "../components/HowItWorks";
 import Testimonials4 from "../components/watermelon-ui/testimonials-4";
 import { OpenSourceSection } from "../components/OpenSourceSection";
 import { GitHubCTA } from "../components/GitHubCTA";
+import { Faq1 } from "../components/watermelon-ui/faq-1";
 import { Footer } from "../components/Footer";
 
 export const Route = createFileRoute("/")({
@@ -23,6 +24,7 @@ function Index() {
         <Testimonials4 />
         <OpenSourceSection />
         <GitHubCTA />
+        <Faq1 />
       </main>
       <Footer />
     </div>

@@ -32,6 +32,9 @@ export function Header() {
         <a href="/#open" className="hover:text-primary transition-colors">
           Open Source
         </a>
+        <a href="/#faq" className="hover:text-primary transition-colors">
+          FAQ
+        </a>
       </nav>
 
       <div className="flex items-center gap-2 sm:gap-3">
