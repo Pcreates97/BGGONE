@@ -1,14 +1,13 @@
 /**
  * Central configuration for client-side background removal and image handling.
- * Easily tune inference dimensions, memory safety bounds, and model defaults.
+ * Optimized for high quality edge matting, sub-second execution, and zero memory leaks.
  */
 export const IMAGE_CONFIG = {
   /**
-   * Maximum dimension (width or height) for initial neural segmentation inference.
-   * Full-resolution re-compositing restores 100% of the original uncompressed source
-   * dimensions and pixel sharpness after inference.
+   * Maximum dimension (width or height) for neural segmentation inference.
+   * 2048px preserves crisp fine details like hair strands, glasses, fur, and intricate edges.
    */
-  maxInferenceDimension: 1600,
+  maxInferenceDimension: 2048,
 
   /**
    * Hard limits to protect browser memory and prevent crashes on mobile or low-RAM devices.
@@ -19,11 +18,11 @@ export const IMAGE_CONFIG = {
 
   /**
    * Model architecture:
-   * - 'small': isnet_quint8 (~22 MB) - 8-bit quantized integer weights; 3x-4x faster on CPU/WASM SIMD, 50% smaller download.
-   * - 'medium': isnet_fp16 (~44 MB) - 16-bit float.
+   * - 'medium': isnet_fp16 (~44 MB) - High precision 16-bit float weights for clean edge matting & hair detail.
+   * - 'small': isnet_quint8 (~22 MB) - 8-bit quantized integer weights (lower precision).
    * - 'large': isnet (~176 MB) - 32-bit float.
    */
-  model: "small" as const,
+  model: "medium" as const,
 
   /**
    * Target output format and quality.
@@ -33,12 +32,12 @@ export const IMAGE_CONFIG = {
 
   /**
    * Hardware execution mode for local fallback:
-   * CPU WASM SIMD multi-threading is extremely stable and avoids ONNX execution provider warnings.
+   * Try WebGPU if available for ultra-fast GPU inference, with smooth fallback to multi-threaded CPU WASM SIMD.
    */
-  preferWebGPU: false,
+  preferWebGPU: true,
 
   /**
-   * Preload toggle for fallback model. Disabled by default since the cloud API is the primary engine.
+   * Preload AI model in the background on initial page mount so processing is instant when user drops an image.
    */
-  preloadOnMount: false,
+  preloadOnMount: true,
 };

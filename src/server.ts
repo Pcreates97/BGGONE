@@ -111,6 +111,21 @@ async function handleApiRemoveBg(request: Request): Promise<Response> {
 
     const outputBytes = await callRemoveBgCloudApi(imageBuffer, size);
 
+    if (!outputBytes) {
+      return new Response(
+        JSON.stringify({
+          error: "Cloud background removal API unavailable. Use client-side neural engine.",
+        }),
+        {
+          status: 503,
+          headers: {
+            "content-type": "application/json",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
+      );
+    }
+
     return new Response(outputBytes, {
       status: 200,
       headers: {

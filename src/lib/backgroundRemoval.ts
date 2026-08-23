@@ -4,7 +4,7 @@ import {
   type Config,
 } from "@imgly/background-removal";
 import { IMAGE_CONFIG } from "../config/imageConfig";
-import { removeBackgroundServerFn } from "./serverRemoveBg";
+import { checkServerApiCapability, removeBackgroundServerFn } from "./serverRemoveBg";
 import { recombineWithOriginalResolution } from "./imageEnhancer";
 
 export interface RemoveBackgroundOptions {
@@ -19,6 +19,7 @@ let engineStatus: EngineStatus = "uninitialized";
 let activeDevice: "gpu" | "cpu" = "cpu";
 let preloadPromise: Promise<void> | null = null;
 let webGpuCheckPromise: Promise<boolean> | null = null;
+let serverCapabilityPromise: Promise<{ hasCloudApi: boolean }> | null = null;
 
 function fileToBase64(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -30,17 +31,38 @@ function fileToBase64(file: File | Blob): Promise<string> {
 }
 
 /**
- * Perform ultra-fast background removal using the configured Cloud API service.
+ * Check if the server has active Cloud API credentials (Remove.bg or Gemini).
+ */
+async function hasServerCloudApi(): Promise<boolean> {
+  if (serverCapabilityPromise) return (await serverCapabilityPromise).hasCloudApi;
+
+  serverCapabilityPromise = (async () => {
+    try {
+      const res = await checkServerApiCapability();
+      return { hasCloudApi: Boolean(res?.hasCloudApi) };
+    } catch {
+      return { hasCloudApi: false };
+    }
+  })();
+
+  return (await serverCapabilityPromise).hasCloudApi;
+}
+
+/**
+ * Perform background removal using the configured Cloud API service.
  */
 async function removeBackgroundViaCloudApi(
   file: File,
   opts?: RemoveBackgroundOptions,
-): Promise<Blob> {
-  opts?.onProgress?.(0.2, "Sending image to high-speed AI engine...");
+): Promise<Blob | null> {
+  const isAvailable = await hasServerCloudApi();
+  if (!isAvailable) {
+    return null; // Don't waste time on failed network roundtrips
+  }
 
-  let cutoutBlob: Blob | null = null;
+  opts?.onProgress?.(0.2, "Sending image to Cloud AI engine...");
 
-  // 1. Try server function RPC with full resolution
+  // 1. Try server function RPC
   try {
     const base64 = await fileToBase64(file);
     opts?.onProgress?.(0.5, "Processing background removal...");
@@ -49,42 +71,17 @@ async function removeBackgroundViaCloudApi(
       data: { imageBase64: base64, size: "full" },
     });
 
-    if (res && res.dataUrl) {
-      opts?.onProgress?.(0.8, "Restoring full native resolution...");
+    if (res && res.success && res.dataUrl) {
+      opts?.onProgress?.(0.85, "Finalizing transparent image...");
       const fetchRes = await fetch(res.dataUrl);
-      cutoutBlob = await fetchRes.blob();
+      const cutoutBlob = await fetchRes.blob();
+      return await recombineWithOriginalResolution(file, cutoutBlob);
     }
   } catch (rpcErr) {
-    console.warn("ServerFn returned error, attempting direct REST endpoint:", rpcErr);
+    console.warn("Cloud server function error:", rpcErr);
   }
 
-  // 2. Fallback to direct REST endpoint
-  if (!cutoutBlob) {
-    const formData = new FormData();
-    formData.append("image_file", file, file.name || "image.png");
-    formData.append("size", "full");
-
-    opts?.onProgress?.(0.6, "Processing transparent cutout...");
-
-    const response = await fetch("/api/removebg", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => null);
-      const errorMsg =
-        errorJson?.error || `Background removal API returned status ${response.status}`;
-      throw new Error(errorMsg);
-    }
-
-    cutoutBlob = await response.blob();
-  }
-
-  opts?.onProgress?.(0.95, "Preserving 100% full original resolution & quality...");
-  const fullResBlob = await recombineWithOriginalResolution(file, cutoutBlob);
-
-  return fullResBlob;
+  return null;
 }
 
 /**
@@ -141,17 +138,17 @@ async function getEngineConfig(opts?: RemoveBackgroundOptions, forceCpu = false)
 
       if (status.startsWith("fetch")) {
         const pct = total ? ` (${Math.round(fraction * 100)}%)` : "";
-        message = `Downloading AI model${pct}...`;
+        message = `Loading neural AI model${pct}...`;
       } else if (status.startsWith("onnx") || status.includes("init")) {
-        message = "Initializing AI engine...";
+        message = "Initializing neural engine...";
       } else if (status === "compute:decode") {
-        message = "Preparing image...";
+        message = "Analyzing image structure...";
       } else if (status === "compute:inference") {
-        message = "Finding subject with AI...";
+        message = "Isolating subject with AI...";
       } else if (status === "compute:mask") {
-        message = "Extracting clean edges...";
+        message = "Refining hair & edge matting...";
       } else if (status.startsWith("compute:encode")) {
-        message = "Finalizing transparent image...";
+        message = "Generating transparent PNG...";
       } else {
         message = status.charAt(0).toUpperCase() + status.slice(1).replace(/[:_]/g, " ");
       }
@@ -164,7 +161,7 @@ async function getEngineConfig(opts?: RemoveBackgroundOptions, forceCpu = false)
 }
 
 /**
- * Preload the local fallback AI model in the background.
+ * Preload the local AI model in the background on mount.
  */
 export async function preloadBackgroundRemovalModel(): Promise<void> {
   if (engineStatus === "ready") return;
@@ -191,7 +188,7 @@ export async function preloadBackgroundRemovalModel(): Promise<void> {
       }
       engineStatus = "error";
       preloadPromise = null;
-      console.warn("Local model preload notice:", err);
+      console.warn("Model preload status notice:", err);
     }
   })();
 
@@ -199,7 +196,7 @@ export async function preloadBackgroundRemovalModel(): Promise<void> {
 }
 
 /**
- * Downscale overly large images before local inference to protect memory.
+ * Downscale overly large images before local inference to protect memory and accelerate inference.
  */
 export async function preprocessImageForInference(
   file: File,
@@ -302,48 +299,51 @@ export async function preprocessImageForInference(
 }
 
 /**
- * Remove background from an image file using the fast cloud API with automatic client fallback.
+ * Remove background with high-speed neural segmentation and instant fallback.
  */
 export async function removeBackground(
   file: File,
   opts: RemoveBackgroundOptions = {},
 ): Promise<Blob> {
-  // 1. Primary: Lightning-fast Cloud API removal (1-2 seconds)
+  // 1. Try Cloud API if credentials exist
   try {
-    const result = await removeBackgroundViaCloudApi(file, opts);
-    opts.onProgress?.(1.0, "Complete!");
-    return result;
-  } catch (cloudError) {
-    console.warn("Cloud background removal API error, running local fallback:", cloudError);
-    opts.onProgress?.(0.2, "Processing image locally with AI...");
-
-    // 2. Secondary: Fallback to local in-browser neural engine
-    const { source } = await preprocessImageForInference(file);
-    const config = await getEngineConfig(opts);
-
-    let rawResult: Blob;
-
-    try {
-      rawResult = await imglyRemoveBackground(source, config);
-      engineStatus = "ready";
-    } catch (primaryError) {
-      if (activeDevice === "gpu") {
-        console.warn("WebGPU fallback failed. Falling back to CPU/WASM:", primaryError);
-        activeDevice = "cpu";
-        const cpuConfig = await getEngineConfig(opts, true);
-        rawResult = await imglyRemoveBackground(source, cpuConfig);
-        engineStatus = "ready";
-      } else {
-        throw primaryError;
-      }
+    const cloudResult = await removeBackgroundViaCloudApi(file, opts);
+    if (cloudResult) {
+      opts.onProgress?.(1.0, "Complete!");
+      return cloudResult;
     }
-
-    opts.onProgress?.(0.95, "Restoring full native resolution & details...");
-    const fullResBlob = await recombineWithOriginalResolution(file, rawResult);
-
-    opts.onProgress?.(1.0, "Complete!");
-    return fullResBlob;
+  } catch (cloudError) {
+    console.warn("Cloud background removal error, proceeding to local neural engine:", cloudError);
   }
+
+  // 2. High-performance In-Browser Neural Engine
+  opts.onProgress?.(0.15, "Isolating background with neural engine...");
+
+  const { source } = await preprocessImageForInference(file);
+  const config = await getEngineConfig(opts);
+
+  let rawResult: Blob;
+
+  try {
+    rawResult = await imglyRemoveBackground(source, config);
+    engineStatus = "ready";
+  } catch (primaryError) {
+    if (activeDevice === "gpu") {
+      console.warn("WebGPU inference failed. Switching to multi-threaded CPU WASM:", primaryError);
+      activeDevice = "cpu";
+      const cpuConfig = await getEngineConfig(opts, true);
+      rawResult = await imglyRemoveBackground(source, cpuConfig);
+      engineStatus = "ready";
+    } else {
+      throw primaryError;
+    }
+  }
+
+  opts.onProgress?.(0.95, "Compositing crisp native resolution...");
+  const fullResBlob = await recombineWithOriginalResolution(file, rawResult);
+
+  opts.onProgress?.(1.0, "Complete!");
+  return fullResBlob;
 }
 
 /**
